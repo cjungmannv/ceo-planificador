@@ -314,7 +314,6 @@ const MN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Sep
 let S={},MO=0;
 
 // ── GOOGLE SHEETS SYNC ──
-// Pegá acá la URL de tu Web App deployment:
 let GS_URL = localStorage.getItem('d4plan_gsurl') || '';
 
 function gsUrlGet(){ return localStorage.getItem('d4plan_gsurl')||''; }
@@ -324,60 +323,70 @@ let _saving = false;
 let _pendingSave = false;
 
 function initS(){
-  // Carga desde caché local primero para mostrar algo rápido
   const cached = localStorage.getItem('d4plan_v4_cache');
   if(cached){try{S=JSON.parse(cached);}catch(e){S=null;}}
   if(!S||!S.config) S={config:{ljHrs:8,vHrs:4.2,clientPct:80},clients:DEFAULT_CLIENTS,months:{}};
   renderAll();
-  // Luego intenta cargar desde Google Sheets
   if(GS_URL) loadFromSheets();
+  else setStatus('warn','Configura la URL de Google Sheets');
 }
 
 function loadFromSheets(){
+  if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
   setStatus('sync','Cargando…');
-  fetch(GS_URL)
-    .then(r=>r.json())
-    .then(data=>{
-      if(data && data.config){
-        S=data;
-        localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
-        renderAll();
-        setStatus('ok','Sincronizado');
-      } else {
-        // Sheets vacío — subir datos locales
-        pushToSheets();
-      }
-    })
-    .catch(()=>setStatus('warn','Sin conexión — usando datos locales'));
+  // Apps Script requiere el parámetro para evitar redirect en GET
+  fetch(GS_URL + '?t=' + Date.now(), {
+    redirect: 'follow',
+    mode: 'cors'
+  })
+  .then(r=>{
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  })
+  .then(data=>{
+    if(data && data.config){
+      S=data;
+      localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
+      renderAll();
+      setStatus('ok','Sincronizado ✓');
+    } else {
+      pushToSheets();
+    }
+  })
+  .catch(e=>{
+    console.error('Load error:',e);
+    setStatus('err','Error: '+e.message);
+  });
 }
 
 function save(){
-  // Siempre guarda en caché local inmediatamente
   localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
-  if(!GS_URL){setStatus('warn','Configura la URL de Google Sheets');return;}
-  // Debounce: si ya está guardando, marca pendiente
+  if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
   if(_saving){_pendingSave=true;return;}
   pushToSheets();
 }
 
 function pushToSheets(){
+  if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
   _saving=true;
   setStatus('sync','Guardando…');
-  fetch(GS_URL,{
-    method:'POST',
-    body:JSON.stringify(S),
-    headers:{'Content-Type':'text/plain'} // Apps Script requiere text/plain en POST desde browser
+  // Apps Script acepta POST con contentType text/plain para evitar preflight CORS
+  fetch(GS_URL, {
+    method: 'POST',
+    mode: 'no-cors', // no-cors evita el bloqueo; no podemos leer la respuesta pero sí escribe
+    body: JSON.stringify(S),
+    headers: {'Content-Type': 'text/plain'}
   })
-  .then(r=>r.json())
-  .then(r=>{
+  .then(()=>{
     _saving=false;
     if(_pendingSave){_pendingSave=false;pushToSheets();return;}
-    if(r.ok) setStatus('ok','Guardado ✓');
-    else setStatus('err','Error al guardar');
+    localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
+    setStatus('ok','Guardado ✓');
   })
-  .catch(()=>{
+  .catch(e=>{
     _saving=false;
-    setStatus('err','Error de conexión');
+    console.error('Save error:',e);
+    setStatus('err','Error al guardar');
   });
 }
 

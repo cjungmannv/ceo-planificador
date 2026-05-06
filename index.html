@@ -334,30 +334,33 @@ function initS(){
 function loadFromSheets(){
   if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
   setStatus('sync','Cargando…');
-  // Usamos proxy CORS para evitar el redirect 302 de Apps Script
-  const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(GS_URL);
-  fetch(proxy)
-  .then(r=>{
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    return r.json();
-  })
-  .then(wrapper=>{
-    const data = JSON.parse(wrapper.contents);
+  // JSONP — no usa CORS, funciona desde cualquier origen
+  const cbName = '_gsCallback_' + Date.now();
+  const script = document.createElement('script');
+  const timeout = setTimeout(()=>{
+    cleanup();
+    setStatus('err','Timeout — verificá la URL');
+  }, 10000);
+  function cleanup(){
+    if(script.parentNode) script.parentNode.removeChild(script);
+    delete window[cbName];
+    clearTimeout(timeout);
+  }
+  window[cbName] = function(data){
+    cleanup();
     if(data && data.config){
       S=data;
       localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
       renderAll();
       setStatus('ok','Sincronizado ✓');
     } else {
-      // Sheets vacío o primer uso — subir datos locales
       pushToSheets();
-      setStatus('ok','Datos iniciales subidos ✓');
+      setStatus('ok','Primer uso — datos subidos ✓');
     }
-  })
-  .catch(e=>{
-    console.error('Load error:',e);
-    setStatus('err','Error: '+e.message);
-  });
+  };
+  script.onerror = ()=>{ cleanup(); setStatus('err','Error cargando script'); };
+  script.src = GS_URL + '?callback=' + cbName;
+  document.head.appendChild(script);
 }
 
 function save(){

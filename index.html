@@ -406,10 +406,19 @@ function rDash(key){
       const c=S.clients.find(c=>c.id===e.clientId);
       return{name:(c?c.name:e.clientName||'Extra')+'*',h:Number(e.hrs)||0,type:'extra'};
     });
-    const allClients=[...clients,...extras].filter(c=>c.h>0).sort((a,b)=>b.h-a.h).slice(0,4);
-    const cr=allClients.map(c=>`<div class="ac-client-row"><span class="ac-client-name">${c.name}</span>${c.type==='package'||c.type==='extra'?'<span class="pkg-pill">'+(c.type==='extra'?'extra':'paquete')+'</span>':''}<span class="ac-client-hrs">${c.h}h</span></div>`).join('')||'<div style="font-size:11px;color:var(--ink3);font-family:var(--mono);padding:4px 0">Sin clientes</div>';
+    const nClients = S.clients.filter(c=>c.analyst===a.id).length + (mdd.extra||[]).filter(e=>e.analyst===a.id).length;
+    const diasLibres = mdd.diasLibres[a.id] || 0;
     const bt=cls==='empty'?'—':(fr>=0?`+${fr}h`:`${fr}h`);
-    return`<div class="analyst-card"><div class="ac-header"><div class="ac-name">${dot(a.id)} ${a.name}</div><span class="ac-badge ${cls}">${bt}</span></div><div class="ac-body"><div class="ac-numbers"><div class="ac-num"><div class="ac-num-val">${Math.round(av.forClients*10)/10}h</div><div class="ac-num-label">Capacidad</div></div><div class="ac-num"><div class="ac-num-val">${as}h</div><div class="ac-num-label">Asignado</div></div><div class="ac-num"><div class="ac-num-val" style="color:${fr<0?'var(--over)':fr<20?'var(--warn)':'var(--good)'}">${fr<0?fr:'+'+fr}h</div><div class="ac-num-label">Libre</div></div></div><div class="progress-track"><div class="progress-fill ${fcl}" style="width:${up}%"></div></div><div class="ac-clients" style="margin-top:12px">${cr}</div></div></div>`;
+    const summaryRows = `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--bg2)">
+        <span style="font-size:12px;color:var(--ink2)">Clientes asignados</span>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--ink)">${nClients}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0">
+        <span style="font-size:12px;color:var(--ink2)">Días libres este mes</span>
+        <span style="font-family:var(--mono);font-size:12px;color:${diasLibres>0?'var(--warn)':'var(--ink3)'}">${diasLibres > 0 ? diasLibres+'d' : '—'}</span>
+      </div>`;
+    return`<div class="analyst-card"><div class="ac-header"><div class="ac-name">${dot(a.id)} ${a.name}</div><span class="ac-badge ${cls}">${bt}</span></div><div class="ac-body"><div class="ac-numbers"><div class="ac-num"><div class="ac-num-val">${Math.round(av.forClients*10)/10}h</div><div class="ac-num-label">Capacidad</div></div><div class="ac-num"><div class="ac-num-val">${as}h</div><div class="ac-num-label">Asignado</div></div><div class="ac-num"><div class="ac-num-val" style="color:${fr<0?'var(--over)':fr<20?'var(--warn)':'var(--good)'}">${fr<0?fr:'+'+fr}h</div><div class="ac-num-label">Libre</div></div></div><div class="progress-track"><div class="progress-fill ${fcl}" style="width:${up}%"></div></div><div style="margin-top:12px">${summaryRows}</div></div></div>`;
   }).join('');
   document.getElementById('analysts-grid').innerHTML=cards;
   const fr=totC-totA,occ=totC>0?(totA/totC*100).toFixed(0):0,fcls=fr>50?'good':fr>0?'warn':'over';

@@ -506,9 +506,7 @@ function saveModal(){
   const type=document.getElementById('m-type').value;
   const c={id:'cx'+Date.now(),name,analyst:document.getElementById('m-analyst').value,type,
     monthlyHrs:type==='monthly'?Number(document.getElementById('m-monthly').value)||0:0,
-    avgHrs:type==='package'?Number(document.getElementById('m-pkg-avg').value)||0:0,
-    
-    
+    avgHrs:type==='package'?Number(document.getElementById('m-pkg-avg').value)||0:0};
   S.clients.push(c);save();closeModal();renderAll();toast(`"${name}" agregado`);
 }
 // ── EXTRA MONTHLY ASSIGNMENTS ──

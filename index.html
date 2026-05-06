@@ -219,9 +219,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14p
     </div>
     <div id="mf-monthly" class="modal-field"><label>Horas contrato / mes</label><input id="m-monthly" type="number" min="0" step="0.5" placeholder="20"></div>
     <div id="mf-package" class="modal-field" style="display:none">
-      <label>Total horas paquete</label><input id="m-pkg-total" type="number" min="0" placeholder="100">
-      <label style="margin-top:10px">Promedio horas / mes</label><input id="m-pkg-avg" type="number" min="0" step="0.5" placeholder="10">
-      <div class="hint">El saldo se actualiza manualmente en Configuración.</div>
+      <label>Promedio horas / mes</label><input id="m-pkg-avg" type="number" min="0" step="0.5" placeholder="10">
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -419,7 +417,7 @@ function rMes(key){
     const clients=S.clients.filter(c=>c.analyst===a.id);
     const rows=clients.map(c=>{
       const val=mdd.clientHrs[c.id]!==undefined?mdd.clientHrs[c.id]:(c.type==='monthly'?c.monthlyHrs:(c.avgHrs||0));
-      const tl=c.type==='monthly'?`<span class="ct-type ct-monthly">mensual</span>`:`<span class="ct-type ct-package">paquete · saldo ${c.packageSaldo||0}h</span>`;
+      const tl=c.type==='monthly'?`<span class="ct-type ct-monthly">mensual</span>`:`<span class="ct-type ct-package">paquete</span>`;
       return`<tr><td><div class="ct-name">${c.name}</div>${tl}</td><td style="text-align:right"><input class="ct-input" type="number" min="0" step="0.5" value="${val}" onchange="setHrs('${key}','${c.id}',this.value)"></td></tr>`;
     }).join('');
     // extra (temporary) assignments for this month
@@ -462,7 +460,7 @@ function rConfig(key){
   }).join(''):'<span style="font-size:11px;color:var(--ink3);font-family:var(--mono)">Sin feriados este mes</span>';
   const dlRows=ANALYSTS.map(a=>`<div class="dias-libres-row"><div class="dl-name">${dot(a.id)} ${a.name}</div><input class="field-input" type="number" min="0" step="0.5" value="${mdd.diasLibres[a.id]||0}" onchange="setDL('${key}','${a.id}',this.value)"></div>`).join('');
   const teamRows=ANALYSTS.map(a=>{const n=S.clients.filter(c=>c.analyst===a.id).length,av=avail(key,a.id);return`<div class="field-row"><div class="dl-name">${dot(a.id)} <strong>${a.name}</strong></div><span style="font-size:11px;color:var(--ink3);font-family:var(--mono)">${n} clientes · ${Math.round(av.forClients*10)/10}h cap</span></div>`;}).join('');
-  const ctRows=S.clients.map(c=>{const ao=ANALYSTS.map(a=>`<option value="${a.id}" ${a.id===c.analyst?'selected':''}>${a.name}</option>`).join('');return`<tr><td><input type="text" value="${c.name}" onchange="uC('${c.id}','name',this.value)"></td><td><select onchange="uC('${c.id}','analyst',this.value)">${ao}</select></td><td><select onchange="uC('${c.id}','type',this.value)"><option value="monthly" ${c.type==='monthly'?'selected':''}>Mensual</option><option value="package" ${c.type==='package'?'selected':''}>Paquete</option></select></td><td><input type="number" value="${c.type==='monthly'?c.monthlyHrs:(c.avgHrs||0)}" onchange="uCH('${c.id}',this.value)"></td><td><input type="number" value="${c.packageTotal||0}" onchange="uC('${c.id}','packageTotal',this.value)" ${c.type==='monthly'?'disabled':''}></td><td><input type="number" value="${c.packageSaldo||0}" onchange="uC('${c.id}','packageSaldo',this.value)" ${c.type==='monthly'?'disabled':''}></td><td><button class="btn-del" onclick="delC('${c.id}')">✕</button></td></tr>`;}).join('');
+  const ctRows=S.clients.map(c=>{const ao=ANALYSTS.map(a=>`<option value="${a.id}" ${a.id===c.analyst?'selected':''}>${a.name}</option>`).join('');return`<tr><td><input type="text" value="${c.name}" onchange="uC('${c.id}','name',this.value)"></td><td><select onchange="uC('${c.id}','analyst',this.value)">${ao}</select></td><td><select onchange="uC('${c.id}','type',this.value)"><option value="monthly" ${c.type==='monthly'?'selected':''}>Mensual</option><option value="package" ${c.type==='package'?'selected':''}>Paquete</option></select></td><td><input type="number" value="${c.type==='monthly'?c.monthlyHrs:(c.avgHrs||0)}" onchange="uCH('${c.id}',this.value)"></td><td><button class="btn-del" onclick="delC('${c.id}')">✕</button></td></tr>`;}).join('');
   document.getElementById('config-grid').innerHTML=`
 <div class="config-card"><div class="config-card-header">Parámetros globales</div><div class="config-card-body">
 <div class="field-row"><div><div class="field-label">Hrs efectivas Lun–Jue</div><div class="field-sub">horas/día</div></div><input class="field-input" type="number" step="0.1" value="${S.config.ljHrs}" onchange="cfgS('ljHrs',this.value)"></div>
@@ -473,7 +471,7 @@ function rConfig(key){
 <div class="config-card"><div class="config-card-header">Días libres — ${ml()}</div><div class="config-card-body"><p style="font-size:11px;color:var(--ink3);font-family:var(--mono);margin-bottom:12px">Vacaciones y permisos (en días)</p>${dlRows}</div></div>
 <div class="config-card"><div class="config-card-header">Feriados Chile — ${ml()}</div><div class="config-card-body"><p style="font-size:11px;color:var(--ink3);font-family:var(--mono);margin-bottom:12px"><span style="color:var(--over)">●</span> Rojo = se descuenta del mes &nbsp;·&nbsp; Gris = trabajaron ese día</p><div class="feriado-chips">${fchips}</div></div></div>
 <div class="config-card"><div class="config-card-header">Equipo</div><div class="config-card-body">${teamRows}</div></div>
-<div class="config-card" style="grid-column:1/-1"><div class="config-card-header" style="display:flex;align-items:center;justify-content:space-between">Cartera de clientes <button class="btn btn-primary btn-sm" onclick="openModal()">+ Agregar</button></div><div class="config-card-body" style="padding:0;overflow-x:auto"><table class="cfg-table"><thead><tr><th>Cliente</th><th>Analista</th><th>Tipo</th><th>Hrs/mes base</th><th>Pkg total</th><th>Saldo</th><th></th></tr></thead><tbody>${ctRows}</tbody></table></div></div>`;
+<div class="config-card" style="grid-column:1/-1"><div class="config-card-header" style="display:flex;align-items:center;justify-content:space-between">Cartera de clientes <button class="btn btn-primary btn-sm" onclick="openModal()">+ Agregar</button></div><div class="config-card-body" style="padding:0;overflow-x:auto"><table class="cfg-table"><thead><tr><th>Cliente</th><th>Analista</th><th>Tipo</th><th>Hrs/mes base</th><th></th></tr></thead><tbody>${ctRows}</tbody></table></div></div>`;
 }
 
 function setHrs(key,cid,val){md(key).clientHrs[cid]=Number(val)||0;save();rDash(key);rForecast()}
@@ -492,7 +490,7 @@ function delC(id){if(!confirm('¿Eliminar este cliente?'))return;S.clients=S.cli
 function openModal(aid=null){
   document.getElementById('m-name').value='';
   document.getElementById('m-monthly').value='';
-  document.getElementById('m-pkg-total').value='';
+  
   document.getElementById('m-pkg-avg').value='';
   document.getElementById('m-type').value='monthly';
   document.getElementById('m-analyst').innerHTML=ANALYSTS.map(a=>`<option value="${a.id}" ${a.id===aid?'selected':''}>${a.name}</option>`).join('');
@@ -509,8 +507,8 @@ function saveModal(){
   const c={id:'cx'+Date.now(),name,analyst:document.getElementById('m-analyst').value,type,
     monthlyHrs:type==='monthly'?Number(document.getElementById('m-monthly').value)||0:0,
     avgHrs:type==='package'?Number(document.getElementById('m-pkg-avg').value)||0:0,
-    packageTotal:type==='package'?Number(document.getElementById('m-pkg-total').value)||0:0,
-    packageSaldo:type==='package'?Number(document.getElementById('m-pkg-total').value)||0:0};
+    
+    
   S.clients.push(c);save();closeModal();renderAll();toast(`"${name}" agregado`);
 }
 // ── EXTRA MONTHLY ASSIGNMENTS ──

@@ -334,23 +334,24 @@ function initS(){
 function loadFromSheets(){
   if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
   setStatus('sync','Cargando…');
-  // Apps Script requiere el parámetro para evitar redirect en GET
-  fetch(GS_URL + '?t=' + Date.now(), {
-    redirect: 'follow',
-    mode: 'cors'
-  })
+  // Usamos proxy CORS para evitar el redirect 302 de Apps Script
+  const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(GS_URL);
+  fetch(proxy)
   .then(r=>{
     if(!r.ok) throw new Error('HTTP '+r.status);
     return r.json();
   })
-  .then(data=>{
+  .then(wrapper=>{
+    const data = JSON.parse(wrapper.contents);
     if(data && data.config){
       S=data;
       localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
       renderAll();
       setStatus('ok','Sincronizado ✓');
     } else {
+      // Sheets vacío o primer uso — subir datos locales
       pushToSheets();
+      setStatus('ok','Datos iniciales subidos ✓');
     }
   })
   .catch(e=>{

@@ -198,7 +198,10 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14p
     <div class="page-header">
       <div class="page-header-row">
         <div><h1>Configuración</h1><p>Parámetros globales, clientes y feriados</p></div>
-        <button class="btn btn-secondary btn-sm" onclick="resetAll()" style="color:var(--over);border-color:#f5c0c0">Borrar todo</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="updateDefaults()" title="Actualiza las horas base de cada cliente con los defaults, sin tocar los meses ya configurados">↺ Actualizar defaults</button>
+          <button class="btn btn-secondary btn-sm" onclick="resetAll()" style="color:var(--over);border-color:#f5c0c0">Borrar todo</button>
+        </div>
       </div>
     </div>
     <div class="config-grid" id="config-grid"></div>
@@ -245,16 +248,20 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14p
 const ANALYSTS=[{id:'chris',name:'Chris'},{id:'keno',name:'Keno'},{id:'diego',name:'Diego'},{id:'vale',name:'Vale'},{id:'javi',name:'Javi'},{id:'basti',name:'Basti'}];
 const AC={chris:'var(--chris)',keno:'var(--keno)',diego:'var(--diego)',vale:'var(--vale)',javi:'var(--javi)',basti:'var(--basti)'};
 const DEFAULT_CLIENTS=[
+  // CHRIS
   {id:'c01',name:'Constructora Río Cochrane',analyst:'chris',type:'package',avgHrs:18.5},
-  {id:'c02',name:'PY - Inmobiliaria',analyst:'chris',type:'monthly',monthlyHrs:4.3},
   {id:'c03',name:'PY - Family Office',analyst:'chris',type:'monthly',monthlyHrs:0.9},
   {id:'c04',name:'Bbosch',analyst:'chris',type:'monthly',monthlyHrs:11.8},
   {id:'c05',name:'Head',analyst:'chris',type:'monthly',monthlyHrs:1.3},
-  {id:'c06',name:'Volcán',analyst:'keno',type:'package',avgHrs:44},
-  {id:'c06b',name:'Volcán',analyst:'diego',type:'package',avgHrs:44},
-  {id:'c07',name:'Codelpa',analyst:'keno',type:'package',avgHrs:35},
-  {id:'c08',name:'FGMM',analyst:'keno',type:'monthly',monthlyHrs:9.6},
+  {id:'c08b',name:'FGMM',analyst:'chris',type:'monthly',monthlyHrs:4.8},  // 50% de 9.6h (comparte con Keno)
+  // KENO
+  {id:'c02',name:'PY - Inmobiliaria',analyst:'keno',type:'monthly',monthlyHrs:4.3},
+  {id:'c06',name:'Volcán',analyst:'keno',type:'package',avgHrs:44},        // 50% de 88h (comparte con Diego)
+  {id:'c07',name:'Codelpa',analyst:'keno',type:'package',avgHrs:17.5},    // 50% de 35h (comparte con Valen)
+  {id:'c08',name:'FGMM',analyst:'keno',type:'monthly',monthlyHrs:4.8},   // 50% de 9.6h (comparte con Chris)
   {id:'c09',name:'Pesco',analyst:'keno',type:'monthly',monthlyHrs:10.6},
+  // DIEGO
+  {id:'c06b',name:'Volcán',analyst:'diego',type:'package',avgHrs:44},     // 50% de 88h (comparte con Keno)
   {id:'c10',name:'Stars',analyst:'diego',type:'monthly',monthlyHrs:39.9},
   {id:'c11',name:'Rep. Austral',analyst:'diego',type:'monthly',monthlyHrs:5.0},
   {id:'c12',name:'Creado en Chile',analyst:'diego',type:'monthly',monthlyHrs:1.7},
@@ -263,15 +270,16 @@ const DEFAULT_CLIENTS=[
   {id:'c15',name:'Jedimar',analyst:'diego',type:'monthly',monthlyHrs:0.4},
   {id:'c16',name:'Almaviva',analyst:'diego',type:'monthly',monthlyHrs:6.6},
   {id:'c17',name:'Sevilla',analyst:'diego',type:'monthly',monthlyHrs:0.6},
+  // VALE
   {id:'c18',name:'Elecmetal',analyst:'vale',type:'monthly',monthlyHrs:39.2},
   {id:'c19',name:'Viña Montes',analyst:'vale',type:'monthly',monthlyHrs:23.8},
   {id:'c20',name:'Amicar',analyst:'vale',type:'monthly',monthlyHrs:18.8},
   {id:'c21',name:'LFE',analyst:'vale',type:'monthly',monthlyHrs:12.6},
   {id:'c22',name:'Bodenor Flexcenter',analyst:'vale',type:'monthly',monthlyHrs:3.0},
-  {id:'c23',name:'Cruceros Australis',analyst:'vale',type:'monthly',monthlyHrs:10.0},
-  {id:'c24',name:'Prieto Abogados',analyst:'vale',type:'monthly',monthlyHrs:15.9},
-  {id:'c25',name:'Lounge',analyst:'vale',type:'monthly',monthlyHrs:20.2},
   {id:'c26',name:'Betterplan',analyst:'vale',type:'monthly',monthlyHrs:2.0},
+  // JAVI
+  {id:'c23',name:'Cruceros Australis',analyst:'javi',type:'monthly',monthlyHrs:10.0},
+  {id:'c25',name:'Lounge',analyst:'javi',type:'monthly',monthlyHrs:20.2},
   {id:'c27',name:'Summit Agro',analyst:'javi',type:'monthly',monthlyHrs:14.8},
   {id:'c28',name:'AFE',analyst:'javi',type:'monthly',monthlyHrs:3.6},
   {id:'c29',name:'Agrícola Bulnes',analyst:'javi',type:'monthly',monthlyHrs:3.6},
@@ -280,6 +288,7 @@ const DEFAULT_CLIENTS=[
   {id:'c32',name:'Montgras',analyst:'javi',type:'monthly',monthlyHrs:25.9},
   {id:'c33',name:'Tecnika',analyst:'javi',type:'monthly',monthlyHrs:18.6},
   {id:'c34',name:'Saval',analyst:'javi',type:'package',avgHrs:8},
+  // BASTI
   {id:'c35',name:'Sigro',analyst:'basti',type:'monthly',monthlyHrs:17.2},
   {id:'c36',name:'Amesti',analyst:'basti',type:'monthly',monthlyHrs:22.8},
   {id:'c37',name:'Agrosystem',analyst:'basti',type:'monthly',monthlyHrs:8.5},
@@ -544,6 +553,18 @@ function removeExtra(key,aid,idx){
   const item=analystExtras[idx];
   mdd.extra=mdd.extra.filter(e=>e!==item);
   save();rMes(key);rDash(key);rForecast();toast('Asignación eliminada');
+}
+function updateDefaults(){
+  if(!confirm('¿Actualizar las horas base de todos los clientes con los defaults?\nNo se tocarán los meses ya configurados.')) return;
+  // Solo actualiza monthlyHrs/avgHrs en clientes existentes, preserva months
+  DEFAULT_CLIENTS.forEach(def => {
+    const c = S.clients.find(c => c.id === def.id);
+    if(c){
+      if(def.type==='monthly') c.monthlyHrs = def.monthlyHrs;
+      else c.avgHrs = def.avgHrs;
+    }
+  });
+  save(); renderAll(); toast('Defaults actualizados ✓');
 }
 function resetAll(){
   if(!confirm('¿Borrar todos los datos?'))return;

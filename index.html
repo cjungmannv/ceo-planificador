@@ -168,11 +168,6 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14p
       <button class="btn-month today" onclick="resetMonth()">hoy</button>
       <button class="btn-month" onclick="shiftMonth(1)">sig →</button>
     </div>
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-      <div class="month-control-label">Google Sheets</div>
-      <div id="sync-status" style="font-family:var(--mono);font-size:11px;color:var(--ink3);margin-top:4px">—</div>
-      <button class="btn-month" style="margin-top:6px;width:100%" onclick="loadFromSheets()">↺ Sincronizar</button>
-    </div>
   </div>
 </aside>
 <main class="main">
@@ -313,95 +308,19 @@ const FERIADOS=[
 const MN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 let S={},MO=0;
 
-// ── GOOGLE SHEETS SYNC ──
-let GS_URL = localStorage.getItem('d4plan_gsurl') || '';
-
-function gsUrlGet(){ return localStorage.getItem('d4plan_gsurl')||''; }
-function gsUrlSet(v){ GS_URL=v.trim(); localStorage.setItem('d4plan_gsurl',GS_URL); toast('URL guardada'); }
-
-let _saving = false;
-let _pendingSave = false;
+// ── STORAGE (localStorage) ──
+let GS_URL = '';
 
 function initS(){
-  const cached = localStorage.getItem('d4plan_v4_cache');
-  if(cached){try{S=JSON.parse(cached);}catch(e){S=null;}}
-  if(!S||!S.config) S={config:{ljHrs:8,vHrs:4.2,clientPct:80},clients:DEFAULT_CLIENTS,months:{}};
-  renderAll();
-  if(GS_URL) loadFromSheets();
-  else setStatus('warn','Configura la URL de Google Sheets');
+  const sv=localStorage.getItem('d4plan_v4');
+  if(sv){try{S=JSON.parse(sv);return;}catch(e){}}
+  S={config:{ljHrs:8,vHrs:4.2,clientPct:80},clients:DEFAULT_CLIENTS,months:{}};
+  save();
 }
-
-function loadFromSheets(){
-  if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
-  setStatus('sync','Cargando…');
-  // JSONP — no usa CORS, funciona desde cualquier origen
-  const cbName = '_gsCallback_' + Date.now();
-  const script = document.createElement('script');
-  const timeout = setTimeout(()=>{
-    cleanup();
-    setStatus('err','Timeout — verificá la URL');
-  }, 10000);
-  function cleanup(){
-    if(script.parentNode) script.parentNode.removeChild(script);
-    delete window[cbName];
-    clearTimeout(timeout);
-  }
-  window[cbName] = function(data){
-    cleanup();
-    if(data && data.config){
-      S=data;
-      localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
-      renderAll();
-      setStatus('ok','Sincronizado ✓');
-    } else {
-      pushToSheets();
-      setStatus('ok','Primer uso — datos subidos ✓');
-    }
-  };
-  script.onerror = ()=>{ cleanup(); setStatus('err','Error cargando script'); };
-  script.src = GS_URL + '?callback=' + cbName;
-  document.head.appendChild(script);
-}
-
 function save(){
-  localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
-  if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
-  if(_saving){_pendingSave=true;return;}
-  pushToSheets();
+  localStorage.setItem('d4plan_v4',JSON.stringify(S));
 }
-
-function pushToSheets(){
-  if(!GS_URL){setStatus('warn','Sin URL configurada');return;}
-  _saving=true;
-  setStatus('sync','Guardando…');
-  // Apps Script acepta POST con contentType text/plain para evitar preflight CORS
-  fetch(GS_URL, {
-    method: 'POST',
-    mode: 'no-cors', // no-cors evita el bloqueo; no podemos leer la respuesta pero sí escribe
-    body: JSON.stringify(S),
-    headers: {'Content-Type': 'text/plain'}
-  })
-  .then(()=>{
-    _saving=false;
-    if(_pendingSave){_pendingSave=false;pushToSheets();return;}
-    localStorage.setItem('d4plan_v4_cache', JSON.stringify(S));
-    setStatus('ok','Guardado ✓');
-  })
-  .catch(e=>{
-    _saving=false;
-    console.error('Save error:',e);
-    setStatus('err','Error al guardar');
-  });
-}
-
-function setStatus(type, msg){
-  const colors={sync:'var(--ink3)',ok:'var(--good)',warn:'var(--warn)',err:'var(--over)'};
-  const color=colors[type]||'var(--ink3)';
-  ['sync-status','sync-status-cfg'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el){el.textContent=msg;el.style.color=color;}
-  });
-}
+function setStatus(){}
 function mk(o=MO){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+o);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
 function ml(o=MO){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+o);return`${MN[d.getMonth()]} ${d.getFullYear()}`}
 function md(key){if(!S.months[key])S.months[key]={holidays:[],diasLibres:{},clientHrs:{},extra:[]};S.months[key].clientHrs=S.months[key].clientHrs||{};S.months[key].diasLibres=S.months[key].diasLibres||{};S.months[key].extra=S.months[key].extra||[];return S.months[key]}
@@ -550,16 +469,6 @@ function rConfig(key){
 <div class="field-row"><div><div class="field-label">Hrs efectivas Viernes</div><div class="field-sub">horas/día</div></div><input class="field-input" type="number" step="0.1" value="${S.config.vHrs}" onchange="cfgS('vHrs',this.value)"></div>
 <div class="field-row"><div><div class="field-label">% horas para clientes</div><div class="field-sub">del total disponible</div></div><input class="field-input" type="number" step="1" value="${S.config.clientPct}" onchange="cfgS('clientPct',this.value)"></div>
 <div class="field-row" style="background:var(--bg);margin:12px -16px -16px;padding:10px 16px;border-top:1px solid var(--border)"><div><div class="field-label" style="color:var(--ink3)">Días hábiles este mes</div></div><span style="font-family:var(--mono);font-size:12px;color:var(--ink2)">L–J: ${lj} · V: ${v}</span></div>
-</div></div>
-<div class="config-card"><div class="config-card-header">Google Sheets sync</div><div class="config-card-body">
-<p style="font-size:11px;color:var(--ink3);font-family:var(--mono);margin-bottom:12px;line-height:1.6">Pegá acá la URL del Apps Script deployment. Todos los que abran la app con esta URL compartirán los mismos datos.</p>
-<div class="field-row"><div><div class="field-label">Web App URL</div><div class="field-sub">script.google.com/macros/s/…</div></div></div>
-<input type="text" value="${gsUrlGet()}" placeholder="https://script.google.com/macros/s/ABC.../exec" onchange="gsUrlSet(this.value)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:7px 10px;font-family:var(--mono);font-size:11px;color:var(--ink);outline:none;margin-top:8px">
-<div style="display:flex;gap:8px;margin-top:10px">
-  <button class="btn btn-primary btn-sm" onclick="loadFromSheets()">↺ Cargar desde Sheets</button>
-  <button class="btn btn-secondary btn-sm" onclick="pushToSheets()">↑ Subir datos locales</button>
-</div>
-<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--ink3)" id="sync-status-cfg">—</div>
 </div></div>
 <div class="config-card"><div class="config-card-header">Días libres — ${ml()}</div><div class="config-card-body"><p style="font-size:11px;color:var(--ink3);font-family:var(--mono);margin-bottom:12px">Vacaciones y permisos (en días)</p>${dlRows}</div></div>
 <div class="config-card"><div class="config-card-header">Feriados Chile — ${ml()}</div><div class="config-card-body"><p style="font-size:11px;color:var(--ink3);font-family:var(--mono);margin-bottom:12px"><span style="color:var(--over)">●</span> Rojo = se descuenta del mes &nbsp;·&nbsp; Gris = trabajaron ese día</p><div class="feriado-chips">${fchips}</div></div></div>

@@ -565,12 +565,17 @@ function removeExtra(key,aid,idx){
 }
 function updateDefaults(){
   if(!confirm('¿Actualizar las horas base de todos los clientes con los defaults?\nNo se tocarán los meses ya configurados.')) return;
-  // Solo actualiza monthlyHrs/avgHrs en clientes existentes, preserva months
   DEFAULT_CLIENTS.forEach(def => {
     const c = S.clients.find(c => c.id === def.id);
     if(c){
+      // Actualizar horas base
       if(def.type==='monthly') c.monthlyHrs = def.monthlyHrs;
       else c.avgHrs = def.avgHrs;
+      // Actualizar analista también por si cambió
+      c.analyst = def.analyst;
+    } else {
+      // Cliente nuevo en defaults — agregarlo
+      S.clients.push({...def});
     }
   });
   save(); renderAll(); toast('Defaults actualizados ✓');

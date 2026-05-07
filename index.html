@@ -168,6 +168,11 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14p
       <button class="btn-month today" onclick="resetMonth()">hoy</button>
       <button class="btn-month" onclick="shiftMonth(1)">sig →</button>
     </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <div class="month-control-label">Sincronización</div>
+      <div id="sync-status" style="font-family:var(--mono);font-size:11px;color:var(--ink3);margin-top:4px">—</div>
+      <button class="btn-month" style="margin-top:6px;width:100%" onclick="initS()">↺ Recargar</button>
+    </div>
   </div>
 </aside>
 <main class="main">
@@ -234,7 +239,16 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14p
   <div class="modal-box">
     <h3>Asignar cliente — solo este mes</h3>
     <p style="font-size:12px;color:var(--ink3);font-family:var(--mono);margin-bottom:18px">Esta asignación es temporal y no modifica la cartera base.</p>
-    <div class="modal-field"><label>Cliente</label><select id="em-client"></select></div>
+    <div class="modal-field">
+      <label>Cliente</label>
+      <select id="em-client" onchange="emClientChange()">
+        <option value="__new__">+ Escribir nombre nuevo…</option>
+      </select>
+    </div>
+    <div class="modal-field" id="em-new-field" style="display:none">
+      <label>Nombre del cliente</label>
+      <input id="em-new-name" type="text" placeholder="Ej: Nuevo Cliente SA">
+    </div>
     <div class="modal-field"><label>Horas este mes</label><input id="em-hrs" type="number" min="0" step="0.5" placeholder="10"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeExtraModal()">Cancelar</button>
@@ -249,52 +263,52 @@ const ANALYSTS=[{id:'chris',name:'Chris'},{id:'keno',name:'Keno'},{id:'diego',na
 const AC={chris:'var(--chris)',keno:'var(--keno)',diego:'var(--diego)',vale:'var(--vale)',javi:'var(--javi)',basti:'var(--basti)'};
 const DEFAULT_CLIENTS=[
   // CHRIS
-  {id:'c01',name:'Constructora Río Cochrane',analyst:'chris',type:'package',avgHrs:18.5},
-  {id:'c03',name:'PY - Family Office',analyst:'chris',type:'monthly',monthlyHrs:0.9},
-  {id:'c04',name:'Bbosch',analyst:'chris',type:'monthly',monthlyHrs:11.8},
-  {id:'c05',name:'Head',analyst:'chris',type:'monthly',monthlyHrs:1.3},
-  {id:'c08b',name:'FGMM',analyst:'chris',type:'monthly',monthlyHrs:4.8},  // 50% de 9.6h (comparte con Keno)
+  {id:'c01',name:'Constructora Río Cochrane',analyst:'chris',type:'package',avgHrs:18.5,contractHrs:null},
+  {id:'c03',name:'PY - Family Office',analyst:'chris',type:'monthly',monthlyHrs:0.9,contractHrs:10},
+  {id:'c04',name:'Bbosch',analyst:'chris',type:'monthly',monthlyHrs:11.8,contractHrs:10},
+  {id:'c05',name:'Head',analyst:'chris',type:'monthly',monthlyHrs:1.3,contractHrs:5},
+  {id:'c08b',name:'FGMM',analyst:'chris',type:'monthly',monthlyHrs:4.8,contractHrs:20},
   // KENO
-  {id:'c02',name:'PY - Inmobiliaria',analyst:'keno',type:'monthly',monthlyHrs:4.3},
-  {id:'c06',name:'Volcán',analyst:'keno',type:'package',avgHrs:44},        // 50% de 88h (comparte con Diego)
-  {id:'c07',name:'Codelpa',analyst:'keno',type:'package',avgHrs:17.5},    // 50% de 35h (comparte con Valen)
-  {id:'c08',name:'FGMM',analyst:'keno',type:'monthly',monthlyHrs:4.8},   // 50% de 9.6h (comparte con Chris)
-  {id:'c09',name:'Pesco',analyst:'keno',type:'monthly',monthlyHrs:10.6},
+  {id:'c02',name:'PY - Inmobiliaria',analyst:'keno',type:'monthly',monthlyHrs:4.3,contractHrs:22},
+  {id:'c06',name:'Volcán',analyst:'keno',type:'package',avgHrs:44,contractHrs:null},
+  {id:'c07',name:'Codelpa',analyst:'keno',type:'package',avgHrs:17.5,contractHrs:null},
+  {id:'c08',name:'FGMM',analyst:'keno',type:'monthly',monthlyHrs:4.8,contractHrs:20},
+  {id:'c09',name:'Pesco',analyst:'keno',type:'monthly',monthlyHrs:10.6,contractHrs:10},
   // DIEGO
-  {id:'c06b',name:'Volcán',analyst:'diego',type:'package',avgHrs:44},     // 50% de 88h (comparte con Keno)
-  {id:'c10',name:'Stars',analyst:'diego',type:'monthly',monthlyHrs:39.9},
-  {id:'c11',name:'Rep. Austral',analyst:'diego',type:'monthly',monthlyHrs:5.0},
-  {id:'c12',name:'Creado en Chile',analyst:'diego',type:'monthly',monthlyHrs:1.7},
-  {id:'c13',name:'Hemisur',analyst:'diego',type:'monthly',monthlyHrs:13.0},
-  {id:'c14',name:'BBS',analyst:'diego',type:'monthly',monthlyHrs:1.3},
-  {id:'c15',name:'Jedimar',analyst:'diego',type:'monthly',monthlyHrs:0.4},
-  {id:'c16',name:'Almaviva',analyst:'diego',type:'monthly',monthlyHrs:6.6},
-  {id:'c17',name:'Sevilla',analyst:'diego',type:'monthly',monthlyHrs:0.6},
+  {id:'c06b',name:'Volcán',analyst:'diego',type:'package',avgHrs:44,contractHrs:null},
+  {id:'c10',name:'Stars',analyst:'diego',type:'monthly',monthlyHrs:39.9,contractHrs:30},
+  {id:'c11',name:'Rep. Austral',analyst:'diego',type:'monthly',monthlyHrs:5.0,contractHrs:5},
+  {id:'c12',name:'Creado en Chile',analyst:'diego',type:'monthly',monthlyHrs:1.7,contractHrs:4},
+  {id:'c13',name:'Hemisur',analyst:'diego',type:'monthly',monthlyHrs:13.0,contractHrs:7},
+  {id:'c14',name:'BBS',analyst:'diego',type:'monthly',monthlyHrs:1.3,contractHrs:7},
+  {id:'c15',name:'Jedimar',analyst:'diego',type:'monthly',monthlyHrs:0.4,contractHrs:4},
+  {id:'c16',name:'Almaviva',analyst:'diego',type:'monthly',monthlyHrs:6.6,contractHrs:6},
+  {id:'c17',name:'Sevilla',analyst:'diego',type:'monthly',monthlyHrs:0.6,contractHrs:7},
   // VALE
-  {id:'c18',name:'Elecmetal',analyst:'vale',type:'monthly',monthlyHrs:39.2},
-  {id:'c19',name:'Viña Montes',analyst:'vale',type:'monthly',monthlyHrs:23.8},
-  {id:'c20',name:'Amicar',analyst:'vale',type:'monthly',monthlyHrs:18.8},
-  {id:'c21',name:'LFE',analyst:'vale',type:'monthly',monthlyHrs:12.6},
-  {id:'c22',name:'Bodenor Flexcenter',analyst:'vale',type:'monthly',monthlyHrs:3.0},
-  {id:'c26',name:'Betterplan',analyst:'vale',type:'monthly',monthlyHrs:2.0},
+  {id:'c18',name:'Elecmetal',analyst:'vale',type:'monthly',monthlyHrs:39.2,contractHrs:40},
+  {id:'c19',name:'Viña Montes',analyst:'vale',type:'monthly',monthlyHrs:23.8,contractHrs:20},
+  {id:'c20',name:'Amicar',analyst:'vale',type:'monthly',monthlyHrs:18.8,contractHrs:10},
+  {id:'c21',name:'LFE',analyst:'vale',type:'monthly',monthlyHrs:12.6,contractHrs:10},
+  {id:'c22',name:'Bodenor Flexcenter',analyst:'vale',type:'monthly',monthlyHrs:3.0,contractHrs:10},
+  {id:'c26',name:'Betterplan',analyst:'vale',type:'monthly',monthlyHrs:2.0,contractHrs:5},
   // JAVI
-  {id:'c23',name:'Cruceros Australis',analyst:'javi',type:'monthly',monthlyHrs:10.0},
-  {id:'c25',name:'Lounge',analyst:'javi',type:'monthly',monthlyHrs:20.2},
-  {id:'c27',name:'Summit Agro',analyst:'javi',type:'monthly',monthlyHrs:14.8},
-  {id:'c28',name:'AFE',analyst:'javi',type:'monthly',monthlyHrs:3.6},
-  {id:'c29',name:'Agrícola Bulnes',analyst:'javi',type:'monthly',monthlyHrs:3.6},
-  {id:'c30',name:'Maxik',analyst:'javi',type:'monthly',monthlyHrs:13.1},
-  {id:'c31',name:'CASBRO',analyst:'javi',type:'monthly',monthlyHrs:2.6},
-  {id:'c32',name:'Montgras',analyst:'javi',type:'monthly',monthlyHrs:25.9},
-  {id:'c33',name:'Tecnika',analyst:'javi',type:'monthly',monthlyHrs:18.6},
-  {id:'c34',name:'Saval',analyst:'javi',type:'package',avgHrs:8},
+  {id:'c23',name:'Cruceros Australis',analyst:'javi',type:'monthly',monthlyHrs:10.0,contractHrs:12},
+  {id:'c25',name:'Lounge',analyst:'javi',type:'monthly',monthlyHrs:20.2,contractHrs:10},
+  {id:'c27',name:'Summit Agro',analyst:'javi',type:'monthly',monthlyHrs:14.8,contractHrs:16.7},
+  {id:'c28',name:'AFE',analyst:'javi',type:'monthly',monthlyHrs:3.6,contractHrs:7},
+  {id:'c29',name:'Agrícola Bulnes',analyst:'javi',type:'monthly',monthlyHrs:3.6,contractHrs:6},
+  {id:'c30',name:'Maxik',analyst:'javi',type:'monthly',monthlyHrs:13.1,contractHrs:10},
+  {id:'c31',name:'CASBRO',analyst:'javi',type:'monthly',monthlyHrs:2.6,contractHrs:4},
+  {id:'c32',name:'Montgras',analyst:'javi',type:'monthly',monthlyHrs:25.9,contractHrs:12},
+  {id:'c33',name:'Tecnika',analyst:'javi',type:'monthly',monthlyHrs:18.6,contractHrs:10},
+  {id:'c34',name:'Saval',analyst:'javi',type:'package',avgHrs:8,contractHrs:null},
   // BASTI
-  {id:'c35',name:'Sigro',analyst:'basti',type:'monthly',monthlyHrs:17.2},
-  {id:'c36',name:'Amesti',analyst:'basti',type:'monthly',monthlyHrs:22.8},
-  {id:'c37',name:'Agrosystem',analyst:'basti',type:'monthly',monthlyHrs:8.5},
-  {id:'c38',name:'Agrícola Sutil',analyst:'basti',type:'monthly',monthlyHrs:3.1},
-  {id:'c39',name:'Kersting',analyst:'basti',type:'monthly',monthlyHrs:13.8},
-  {id:'c40',name:'Emin',analyst:'basti',type:'package',avgHrs:0},
+  {id:'c35',name:'Sigro',analyst:'basti',type:'monthly',monthlyHrs:17.2,contractHrs:13.3},
+  {id:'c36',name:'Amesti',analyst:'basti',type:'monthly',monthlyHrs:22.8,contractHrs:6},
+  {id:'c37',name:'Agrosystem',analyst:'basti',type:'monthly',monthlyHrs:8.5,contractHrs:8},
+  {id:'c38',name:'Agrícola Sutil',analyst:'basti',type:'monthly',monthlyHrs:3.1,contractHrs:10},
+  {id:'c39',name:'Kersting',analyst:'basti',type:'monthly',monthlyHrs:13.8,contractHrs:10},
+  {id:'c40',name:'Emin',analyst:'basti',type:'package',avgHrs:0,contractHrs:null},
 ];
 const FERIADOS=[
   {date:'2025-01-01',name:'Año Nuevo'},{date:'2025-04-18',name:'Viernes Santo'},{date:'2025-04-19',name:'Sábado Santo'},
@@ -315,19 +329,71 @@ const FERIADOS=[
 const MN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 let S={},MO=0;
 
-// ── STORAGE (localStorage) ──
-let GS_URL = '';
+// ── JSONBIN SYNC ──
+const JSONBIN_ID  = '69fcb701250b1311c3198e75';
+const JSONBIN_MASTER = '$2a$10$AyEg9nsZVeb/EkTmmljUhe54k1Od70OTj5UZYtDeiNpWgtA5gdYcy';
+const JSONBIN_ACCESS = '$2a$10$J5gg729IWlQelT8e5cy80e9ZM4rX9cGIUopgHyRkBSdw0x05PUW.2';
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_ID}`;
+
+let _saving = false, _pendingSave = false;
 
 function initS(){
-  const sv=localStorage.getItem('d4plan_v4');
-  if(sv){try{S=JSON.parse(sv);return;}catch(e){}}
-  S={config:{ljHrs:8,vHrs:4.2,clientPct:80},clients:DEFAULT_CLIENTS,months:{}};
-  save();
+  const cached = localStorage.getItem('d4plan_cache');
+  if(cached){try{S=JSON.parse(cached);}catch(e){S=null;}}
+  if(!S||!S.config) S={config:{ljHrs:8,vHrs:4.2,clientPct:80},clients:DEFAULT_CLIENTS,months:{}};
+  renderAll();
+  setStatus('sync','Cargando…');
+  fetch(JSONBIN_URL+'/latest', {
+    headers:{'X-Access-Key': JSONBIN_ACCESS, 'X-Bin-Meta': 'false'}
+  })
+  .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(data=>{
+    const record = data.record || data;
+    if(record && record.config){
+      S=record;
+      localStorage.setItem('d4plan_cache',JSON.stringify(S));
+      renderAll();
+      setStatus('ok','Sincronizado ✓');
+    } else {
+      pushToJSONBin();
+    }
+  })
+  .catch(e=>{console.error(e);setStatus('err','Sin conexión — datos locales');});
 }
+
 function save(){
-  localStorage.setItem('d4plan_v4',JSON.stringify(S));
+  localStorage.setItem('d4plan_cache',JSON.stringify(S));
+  if(_saving){_pendingSave=true;return;}
+  pushToJSONBin();
 }
-function setStatus(){}
+
+function pushToJSONBin(){
+  _saving=true;
+  setStatus('sync','Guardando…');
+  fetch(JSONBIN_URL,{
+    method:'PUT',
+    headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_MASTER},
+    body:JSON.stringify(S)
+  })
+  .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(()=>{
+    _saving=false;
+    if(_pendingSave){_pendingSave=false;pushToJSONBin();return;}
+    setStatus('ok','Guardado ✓');
+  })
+  .catch(e=>{
+    _saving=false;
+    console.error(e);
+    setStatus('err','Error al guardar');
+  });
+}
+
+function setStatus(type,msg){
+  const colors={sync:'var(--ink3)',ok:'var(--good)',warn:'var(--warn)',err:'var(--over)'};
+  const color=colors[type]||'var(--ink3)';
+  const el=document.getElementById('sync-status');
+  if(el){el.textContent=msg;el.style.color=color;}
+}
 function mk(o=MO){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+o);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
 function ml(o=MO){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+o);return`${MN[d.getMonth()]} ${d.getFullYear()}`}
 function md(key){if(!S.months[key])S.months[key]={holidays:[],diasLibres:{},clientHrs:{},extra:[]};S.months[key].clientHrs=S.months[key].clientHrs||{};S.months[key].diasLibres=S.months[key].diasLibres||{};S.months[key].extra=S.months[key].extra||[];return S.months[key]}
@@ -418,11 +484,11 @@ function rDash(key){
         <span style="font-size:12px;color:var(--ink2)">Días libres este mes</span>
         <span style="font-family:var(--mono);font-size:12px;color:${diasLibres>0?'var(--warn)':'var(--ink3)'}">${diasLibres > 0 ? diasLibres+'d' : '—'}</span>
       </div>`;
-    return`<div class="analyst-card"><div class="ac-header"><div class="ac-name">${dot(a.id)} ${a.name}</div><span class="ac-badge ${cls}">${bt}</span></div><div class="ac-body"><div class="ac-numbers"><div class="ac-num"><div class="ac-num-val">${Math.round(av.forClients*10)/10}h</div><div class="ac-num-label">Capacidad</div></div><div class="ac-num"><div class="ac-num-val">${as}h</div><div class="ac-num-label">Asignado</div></div><div class="ac-num"><div class="ac-num-val" style="color:${fr<0?'var(--over)':fr<20?'var(--warn)':'var(--good)'}">${fr<0?fr:'+'+fr}h</div><div class="ac-num-label">Libre</div></div></div><div class="progress-track"><div class="progress-fill ${fcl}" style="width:${up}%"></div></div><div style="margin-top:12px">${summaryRows}</div></div></div>`;
+    return`<div class="analyst-card"><div class="ac-header"><div class="ac-name">${dot(a.id)} ${a.name}</div><span class="ac-badge ${cls}">${bt}</span></div><div class="ac-body"><div class="ac-numbers"><div class="ac-num"><div class="ac-num-val">${Math.round(av.forClients*10)/10}h</div><div class="ac-num-label">Capacidad</div></div><div class="ac-num"><div class="ac-num-val">${as}h</div><div class="ac-num-label">Asignado</div></div><div class="ac-num"><div class="ac-num-val" style="color:${fr<0?'var(--over)':fr<20?'var(--warn)':'var(--good)'}">${fr<0?fr:'+'+fr}h</div><div class="ac-num-label">Disponible</div></div></div><div class="progress-track"><div class="progress-fill ${fcl}" style="width:${up}%"></div></div><div style="margin-top:12px">${summaryRows}</div></div></div>`;
   }).join('');
   document.getElementById('analysts-grid').innerHTML=cards;
   const fr=totC-totA,occ=totC>0?(totA/totC*100).toFixed(0):0,fcls=fr>50?'good':fr>0?'warn':'over';
-  document.getElementById('stat-strip').innerHTML=`<div class="stat-item"><div class="stat-label">Ocupación equipo</div><div class="stat-value">${occ}%</div><div class="stat-sub">${Math.round(totA)}h / ${Math.round(totC)}h</div></div><div class="stat-item"><div class="stat-label">Horas libres totales</div><div class="stat-value ${fcls}">${Math.round(fr)}h</div><div class="stat-sub">disponibles para asignar</div></div><div class="stat-item"><div class="stat-label">Analistas</div><div class="stat-value">${ANALYSTS.length}</div><div class="stat-sub">${S.clients.length} clientes activos</div></div><div class="stat-item"><div class="stat-label">Paquetes activos</div><div class="stat-value">${S.clients.filter(c=>c.type==='package').length}</div><div class="stat-sub">clientes con banco de horas</div></div>`;
+  document.getElementById('stat-strip').innerHTML=`<div class="stat-item"><div class="stat-label">Ocupación equipo</div><div class="stat-value">${occ}%</div><div class="stat-sub">${Math.round(totA)}h / ${Math.round(totC)}h</div></div><div class="stat-item"><div class="stat-label">Horas disponibles totales</div><div class="stat-value ${fcls}">${Math.round(fr)}h</div><div class="stat-sub">para asignar al equipo</div></div><div class="stat-item"><div class="stat-label">Analistas</div><div class="stat-value">${ANALYSTS.length}</div><div class="stat-sub">${S.clients.length} clientes activos</div></div><div class="stat-item"><div class="stat-label">Paquetes activos</div><div class="stat-value">${S.clients.filter(c=>c.type==='package').length}</div><div class="stat-sub">clientes con banco de horas</div></div>`;
 }
 
 function rMes(key){
@@ -436,7 +502,9 @@ function rMes(key){
     const rows=clients.map(c=>{
       const val=mdd.clientHrs[c.id]!==undefined?mdd.clientHrs[c.id]:(c.type==='monthly'?c.monthlyHrs:(c.avgHrs||0));
       const tl=c.type==='monthly'?`<span class="ct-type ct-monthly">mensual</span>`:`<span class="ct-type ct-package">paquete</span>`;
-      return`<tr><td><div class="ct-name">${c.name}</div>${tl}</td><td style="text-align:right"><input class="ct-input" type="number" min="0" step="0.5" value="${val}" onchange="setHrs('${key}','${c.id}',this.value)"></td></tr>`;
+      const def=DEFAULT_CLIENTS.find(d=>d.id===c.id);
+      const contratoRef=def&&def.contractHrs!=null?`<span style="font-family:var(--mono);font-size:11px;color:var(--ink3);white-space:nowrap">/ ${def.contractHrs}h</span>`:'';
+      return`<tr><td><div class="ct-name">${c.name}</div>${tl}</td><td style="text-align:right"><div style="display:flex;align-items:center;justify-content:flex-end;gap:6px"><input class="ct-input" type="number" min="0" step="0.5" value="${val}" onchange="setHrs('${key}','${c.id}',this.value)">${contratoRef}</div></td></tr>`;
     }).join('');
     // extra (temporary) assignments for this month
     const extras=(mdd.extra||[]).filter(e=>e.analyst===a.id);
@@ -446,7 +514,7 @@ function rMes(key){
       return`<tr style="background:var(--bg)"><td><div class="ct-name" style="color:var(--ink2)">${cname}</div><span class="ct-type" style="color:var(--warn)">extra este mes</span></td><td style="text-align:right;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:8px 16px"><input class="ct-input" type="number" min="0" step="0.5" value="${e.hrs||0}" onchange="setExtraHrs('${key}','${a.id}',${i},this.value)"><button class="btn-del" onclick="removeExtra('${key}','${a.id}',${i})" title="Quitar">✕</button></td></tr>`;
     }).join('');
     const emptyRow=(!rows&&!extraRows)?`<tr><td colspan="2"><div class="empty">Sin clientes asignados</div></td></tr>`:'';
-    return`<div class="analyst-section"><div class="as-header"><div class="as-title">${dot(a.id)} ${a.name}</div><span class="as-meta ${cls}">${Math.round(av.forClients*10)/10}h cap · ${Math.round(as)}h asign · <strong>${fr>=0?'+'+fr:fr}h libres</strong></span></div><table class="clients-table"><tbody>${rows}${extraRows}${emptyRow}</tbody></table><button class="add-row-btn" onclick="openExtraModal('${key}','${a.id}')">+ asignar cliente este mes</button></div>`;
+    return`<div class="analyst-section" data-aid="${a.id}"><div class="as-header"><div class="as-title">${dot(a.id)} ${a.name}</div><span class="as-meta ${cls}">${Math.round(av.forClients*10)/10}h cap · ${Math.round(as)}h asign · <strong>${fr>=0?'+'+fr:fr}h disponibles</strong></span></div><table class="clients-table"><tbody>${rows}${extraRows}${emptyRow}</tbody></table><button class="add-row-btn" onclick="openExtraModal('${key}','${a.id}')">+ asignar cliente este mes</button></div>`;
   }).join('');
   document.getElementById('mes-layout').innerHTML=secs;
 }
@@ -492,7 +560,21 @@ function rConfig(key){
 <div class="config-card" style="grid-column:1/-1"><div class="config-card-header" style="display:flex;align-items:center;justify-content:space-between">Cartera de clientes <button class="btn btn-primary btn-sm" onclick="openModal()">+ Agregar</button></div><div class="config-card-body" style="padding:0;overflow-x:auto"><table class="cfg-table"><thead><tr><th>Cliente</th><th>Analista</th><th>Tipo</th><th>Hrs/mes base</th><th></th></tr></thead><tbody>${ctRows}</tbody></table></div></div>`;
 }
 
-function setHrs(key,cid,val){md(key).clientHrs[cid]=Number(val)||0;save();rDash(key);rForecast()}
+function setHrs(key,cid,val){
+  md(key).clientHrs[cid]=Number(val)||0;
+  save();
+  rDash(key);rForecast();
+  // Re-render only the headers in mes view without losing focus
+  document.querySelectorAll('.as-meta').forEach(el=>{
+    const aid=el.closest('.analyst-section')?.dataset?.aid;
+    if(!aid)return;
+    const av=avail(key,aid),as=asgnd(key,aid);
+    const fr=Math.round((av.forClients-as)*10)/10;
+    const cls=bcls(fr,av.forClients);
+    el.className='as-meta '+cls;
+    el.innerHTML=`${Math.round(av.forClients*10)/10}h cap · ${Math.round(as)}h asign · <strong>${fr>=0?'+'+fr:fr}h disponibles</strong>`;
+  });
+}
 function toggleHol(key,date,el){
   const mdd=md(key),i=mdd.holidays.indexOf(date);
   // mdd.holidays = días que SÍ trabajaron (excepciones al feriado)
@@ -529,27 +611,41 @@ function saveModal(){
 }
 // ── EXTRA MONTHLY ASSIGNMENTS ──
 let _extraKey=null,_extraAid=null;
+function emClientChange(){
+  const v = document.getElementById('em-client').value;
+  document.getElementById('em-new-field').style.display = v==='__new__' ? 'block' : 'none';
+}
 function openExtraModal(key,aid){
   _extraKey=key;_extraAid=aid;
-  // populate client selector — show all clients not already assigned to this analyst
   const alreadyOwned=S.clients.filter(c=>c.analyst===aid).map(c=>c.id);
   const others=S.clients.filter(c=>!alreadyOwned.includes(c.id));
-  if(!others.length){toast('No hay otros clientes disponibles');return;}
-  document.getElementById('em-client').innerHTML=others.map(c=>`<option value="${c.id}">${c.name} (${ANALYSTS.find(a=>a.id===c.analyst)?.name||'—'})</option>`).join('');
+  const opts = '<option value="__new__">+ Escribir nombre nuevo…</option>' +
+    others.map(c=>`<option value="${c.id}">${c.name} (${ANALYSTS.find(a=>a.id===c.analyst)?.name||'—'})</option>`).join('');
+  document.getElementById('em-client').innerHTML=opts;
   document.getElementById('em-hrs').value='';
+  document.getElementById('em-new-name').value='';
+  document.getElementById('em-new-field').style.display='none';
   document.getElementById('modal-extra').style.display='flex';
   setTimeout(()=>document.getElementById('em-hrs').focus(),50);
 }
 function closeExtraModal(e){if(!e||e.target.id==='modal-extra')document.getElementById('modal-extra').style.display='none';}
 function saveExtraModal(){
-  const cid=document.getElementById('em-client').value;
+  const sel=document.getElementById('em-client').value;
   const hrs=Number(document.getElementById('em-hrs').value)||0;
-  if(!cid)return;
   const mdd=md(_extraKey);
-  mdd.extra.push({analyst:_extraAid,clientId:cid,hrs});
-  save();closeExtraModal();rMes(_extraKey);rDash(_extraKey);rForecast();
-  const c=S.clients.find(c=>c.id===cid);
-  toast(`"${c?.name}" asignado a ${ANALYSTS.find(a=>a.id===_extraAid)?.name}`);
+  if(sel==='__new__'){
+    const name=document.getElementById('em-new-name').value.trim();
+    if(!name){alert('Escribe el nombre del cliente');return;}
+    mdd.extra.push({analyst:_extraAid,clientId:null,clientName:name,hrs});
+    save();closeExtraModal();rMes(_extraKey);rDash(_extraKey);rForecast();
+    toast(`"${name}" asignado a ${ANALYSTS.find(a=>a.id===_extraAid)?.name}`);
+  } else {
+    if(!sel)return;
+    mdd.extra.push({analyst:_extraAid,clientId:sel,hrs});
+    save();closeExtraModal();rMes(_extraKey);rDash(_extraKey);rForecast();
+    const c=S.clients.find(c=>c.id===sel);
+    toast(`"${c?.name}" asignado a ${ANALYSTS.find(a=>a.id===_extraAid)?.name}`);
+  }
 }
 function setExtraHrs(key,aid,idx,val){
   const extras=md(key).extra.filter(e=>e.analyst===aid);
@@ -565,24 +661,25 @@ function removeExtra(key,aid,idx){
 }
 function updateDefaults(){
   if(!confirm('¿Actualizar las horas base de todos los clientes con los defaults?\nNo se tocarán los meses ya configurados.')) return;
+  // Actualizar y agregar
   DEFAULT_CLIENTS.forEach(def => {
     const c = S.clients.find(c => c.id === def.id);
     if(c){
-      // Actualizar horas base
       if(def.type==='monthly') c.monthlyHrs = def.monthlyHrs;
       else c.avgHrs = def.avgHrs;
-      // Actualizar analista también por si cambió
       c.analyst = def.analyst;
     } else {
-      // Cliente nuevo en defaults — agregarlo
       S.clients.push({...def});
     }
   });
+  // Eliminar clientes que ya no están en los defaults
+  const defaultIds = DEFAULT_CLIENTS.map(d=>d.id);
+  S.clients = S.clients.filter(c => defaultIds.includes(c.id));
   save(); renderAll(); toast('Defaults actualizados ✓');
 }
 function resetAll(){
   if(!confirm('¿Borrar todos los datos?'))return;
-  localStorage.removeItem('d4plan_v4_cache');
+  localStorage.removeItem('d4plan_cache');
   S={config:{ljHrs:8,vHrs:4.2,clientPct:80},clients:DEFAULT_CLIENTS,months:{}};
   save();renderAll();toast('Reseteado');
 }

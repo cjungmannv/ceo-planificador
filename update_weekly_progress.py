@@ -152,7 +152,9 @@ def update_jsonbin_progress(progress, new_clients_from_sql):
     
     # Agregar nuevos clientes descubiertos
     existing_clients = {c['name']: c['id'] for c in state.get('clients', [])}
-    next_id = max([int(c['id'][1:]) for c in state.get('clients', [])], default=0) + 1
+    # Extraer números de IDs existentes correctamente (c01 → 1, c08 → 8)
+    existing_ids = [int(c['id'][1:]) for c in state.get('clients', []) if c['id'].startswith('c')]
+    next_id = max(existing_ids, default=0) + 1
     
     new_count = 0
     for client_name in new_clients_from_sql:

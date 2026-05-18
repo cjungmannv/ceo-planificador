@@ -1,0 +1,32 @@
+name: Update monthly averages from SQL
+
+on:
+  schedule:
+    # Día 1 de cada mes a las 09:00 UTC (06:00 Chile)
+    - cron: '0 9 1 * *'
+  workflow_dispatch:  # permite ejecutarlo manualmente desde la UI
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run updater
+        env:
+          SQL_SERVER:          ${{ secrets.SQL_SERVER }}
+          SQL_DATABASE:        ${{ secrets.SQL_DATABASE }}
+          SQL_USER:            ${{ secrets.SQL_USER }}
+          SQL_PASSWORD:        ${{ secrets.SQL_PASSWORD }}
+          JSONBIN_ID:          ${{ secrets.JSONBIN_ID }}
+          JSONBIN_MASTER_KEY:  ${{ secrets.JSONBIN_MASTER_KEY }}
+          JSONBIN_ACCESS_KEY:  ${{ secrets.JSONBIN_ACCESS_KEY }}
+        run: python update_jsonbin.py

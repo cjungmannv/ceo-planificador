@@ -25,7 +25,7 @@ JSONBIN_URL = f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}"
 
 # Mapeo de iniciales SQL → IDs app
 ANALYST_MAP = {
-    'EDR': 'keno',   # Eugenio del Río
+    'EDV': 'keno',   # Eugenio del Río
     'DFA': 'diego',  # Diego Ferrario
     'VPC': 'vale',   # Valentina Plaza
     'VGP': 'valen',  # Valentina Giacchino
@@ -34,58 +34,37 @@ ANALYST_MAP = {
     'CJV': 'chris',  # Christian Jungmann
 }
 
-# Mapeo de nombres SQL → IDs app (mismo que el script mensual)
-CLIENT_MAP = {
-    "Constructora Rio Cochrane": "c01",
-    "Inmobiliaria PY":           "c02",
-    "Inmobiliaria PY":           "c03",
-    "BBosch":                    "c04",
-    "Head":                      "c05",
-    "Volcan":                    "c06",
-    "Codelpa":                   "c07",
-    "FGMM":                      "c08",
-    "Pesco":                     "c09",
-    "Stars Investment":          "c10",
-    "Republica Austral":         "c11",
-    "Creado en Chile":           "c12",
-    "Hemisur":                   "c13",
-    "BBS":                       "c14",
-    "Jedimar":                   "c15",
-    "Almaviva":                  "c16",
-    "Sevilla":                   "c17",
-    "Elecmetal":                 "c18",
-    "Viña Montes":               "c19",
-    "Amicar":                    "c20",
-    "LFE":                       "c21",
-    "Bodenor Flexcenter":        "c22",
-    "Cruceros Australis":        "c23",
-    "Lounge":                    "c25",
-    "Betterplan":                "c26",
-    "Summit Agro":               "c27",
-    "AFE":                       "c28",
-    "Agricola Bulnes":           "c29",
-    "MaxiK":                     "c30",
-    "CASBRO":                    "c31",
-    "Montgras":                  "c32",
-    "Amesti":                    "c36",
-    "Agrosystem":                "c37",
-    "Agricola Sutil":            "c38",
-    "Kersting":                  "c39",
-    "Emin":                      "c40",
-    "Davita":                    "c41",
-    "Agricola Maria Pinto":      "c42",
-}
+
+def get_client_map():
+    """Obtiene el mapeo de clientes desde JSONBin."""
+    r = requests.get(
+        f"{JSONBIN_URL}/latest",
+        headers={"X-Access-Key": JSONBIN_ACCESS, "X-Bin-Meta": "false"},
+        timeout=15
+    )
+    r.raise_for_status()
+    state = r.json()
+    
+    # Construir mapeo nombre SQL → client ID desde el JSONBin
+    client_map = {}
+    for client in state.get('clients', []):
+        client_map[client['name']] = client['id']
+    
+    print(f"Cargados {len(client_map)} clientes desde JSONBin")
+    return client_map
 
 
-def query_sql_progress():
-    """Consulta horas trabajadas del mes actual hasta hoy."""
+def query_sql_progress(client_map):
+    """Consulta horas trabajadas del mes actual completo."""
     today = date.today()
     first_day = today.replace(day=1)
+    last_day = date(today.year, today.month + 1, 1) if today.month < 12 else date(today.year + 1, 1, 1)
+    last_day = (last_day - relativedelta(days=1))  # último día del mes
     
     fecha_desde = int(first_day.strftime('%Y%m%d'))
-    fecha_hasta = int(today.strftime('%Y%m%d'))
+    fecha_hasta = int(last_day.strftime('%Y%m%d'))
     
-    print(f"Consultando horas trabajadas desde {first_day} hasta {today}")
+    print(f"Consultando horas trabajadas de todo el mes: {first_day} hasta {last_day}")
 
     conn = mysql.connector.connect(
         host=SQL_SERVER,
@@ -123,25 +102,30 @@ def query_sql_progress():
         
         # Agrupar por cliente y analista
         progress = {}
+        new_clients = set()
+        
         for cliente_nombre, analista_inicial, horas in cursor.fetchall():
-            client_id = CLIENT_MAP.get(cliente_nombre)
+            client_id = client_map.get(cliente_nombre)
             analyst_id = ANALYST_MAP.get(analista_inicial)
+            
+            if not client_id:
+                # Cliente nuevo descubierto
+                new_clients.add(cliente_nombre)
+                print(f"⚠ Cliente nuevo descubierto: {cliente_nombre}")
+            elif not analyst_id:
+                print(f"⚠ Analista desconocido: {analista_inicial}")
             
             if client_id and analyst_id:
                 key = (client_id, analyst_id)
                 progress[key] = progress.get(key, 0) + float(horas)
-            elif not client_id:
-                print(f"⚠ Cliente desconocido: {cliente_nombre}")
-            elif not analyst_id:
-                print(f"⚠ Analista desconocido: {analista_inicial}")
         
-        return progress
+        return progress, new_clients
     finally:
         conn.close()
 
 
-def update_jsonbin_progress(progress):
-    """Actualiza el JSONBin con el progreso semanal."""
+def update_jsonbin_progress(progress, new_clients_from_sql):
+    """Actualiza el JSONBin con el progreso semanal y nuevos clientes."""
     # Leer estado actual
     r = requests.get(
         f"{JSONBIN_URL}/latest",
@@ -165,6 +149,30 @@ def update_jsonbin_progress(progress):
     }
     
     print(f"Actualizando progreso: {len(progress)} registros cliente-analista")
+    
+    # Agregar nuevos clientes descubiertos
+    existing_clients = {c['name']: c['id'] for c in state.get('clients', [])}
+    next_id = max([int(c['id'][1:]) for c in state.get('clients', [])], default=0) + 1
+    
+    new_count = 0
+    for client_name in new_clients_from_sql:
+        if client_name not in existing_clients:
+            new_id = f"c{next_id:02d}"
+            state['clients'].append({
+                "id": new_id,
+                "name": client_name,
+                "avgHrs": 0,
+                "autoAdded": True,
+                "addedDate": date.today().isoformat()
+            })
+            print(f"  + Nuevo cliente agregado: {client_name} → {new_id}")
+            next_id += 1
+            new_count += 1
+    
+    if new_count > 0:
+        print(f"✓ {new_count} clientes nuevos agregados al JSONBin")
+    else:
+        print("✓ No hay clientes nuevos para agregar")
 
     # Guardar
     r = requests.put(
@@ -177,14 +185,15 @@ def update_jsonbin_progress(progress):
         timeout=15
     )
     r.raise_for_status()
-    print("✓ Progreso semanal actualizado en JSONBin")
+    print("✓ Progreso semanal y clientes actualizados en JSONBin")
 
 
 def main():
     try:
-        progress = query_sql_progress()
+        client_map = get_client_map()
+        progress, new_clients = query_sql_progress(client_map)
         print(f"Recibidos {len(progress)} registros de horas trabajadas")
-        update_jsonbin_progress(progress)
+        update_jsonbin_progress(progress, new_clients)
     except Exception as e:
         print(f"✗ Error: {e}", file=sys.stderr)
         sys.exit(1)

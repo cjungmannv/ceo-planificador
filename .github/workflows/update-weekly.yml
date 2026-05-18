@@ -2,8 +2,8 @@ name: Update weekly progress
 
 on:
   schedule:
-    # Todos los lunes a las 09:00 UTC (06:00 Chile)
-    - cron: '0 9 * * 1'
+    # Todos los lunes a las 10:00 UTC (07:00 Chile)
+    - cron: '0 10 * * 1'
   workflow_dispatch:  # permite ejecutarlo manualmente
 
 jobs:

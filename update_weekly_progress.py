@@ -152,8 +152,23 @@ def update_jsonbin_progress(progress, new_clients_from_sql):
     
     # Agregar nuevos clientes descubiertos
     existing_clients = {c['name']: c['id'] for c in state.get('clients', [])}
-    # Extraer números de IDs existentes correctamente (c01 → 1, c08 → 8)
-    existing_ids = [int(c['id'][1:]) for c in state.get('clients', []) if c['id'].startswith('c')]
+    
+    # Extraer números de IDs existentes, manejando IDs con formato incorrecto
+    existing_ids = []
+    for c in state.get('clients', []):
+        cid = c.get('id', '')
+        if cid.startswith('c'):
+            # Intentar extraer el número después de 'c'
+            num_part = cid[1:]
+            try:
+                # Solo tomar la parte numérica (c08b → 8, c07 → 7)
+                numeric_part = ''.join(filter(str.isdigit, num_part))
+                if numeric_part:
+                    existing_ids.append(int(numeric_part))
+            except ValueError:
+                print(f"⚠ ID con formato inválido ignorado: {cid}")
+                continue
+    
     next_id = max(existing_ids, default=0) + 1
     
     new_count = 0
@@ -191,6 +206,7 @@ def update_jsonbin_progress(progress, new_clients_from_sql):
 
 
 def main():
+    print("=== Script version: 2026-05-18-v2 ===")
     try:
         client_map = get_client_map()
         progress, new_clients = query_sql_progress(client_map)

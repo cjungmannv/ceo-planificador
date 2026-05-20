@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Actualiza promedios de horas en JSONBin consultando el SQL de Jira.
+Actualiza promedios de horas Y horas por contrato en JSONBin consultando SQL.
 Se ejecuta el 1ro de cada mes via GitHub Actions.
 """
 
@@ -13,8 +13,8 @@ import mysql.connector
 import requests
 
 # ── CONFIG (se leen de variables de entorno / GitHub Secrets) ──
-SQL_SERVER   = os.environ['SQL_SERVER']      # dw-masanalytics.mysql.database.azure.com
-SQL_DATABASE = os.environ['SQL_DATABASE']    # dw_proyectos
+SQL_SERVER   = os.environ['SQL_SERVER']
+SQL_DATABASE = os.environ['SQL_DATABASE']
 SQL_USER     = os.environ['SQL_USER']
 SQL_PASSWORD = os.environ['SQL_PASSWORD']
 
@@ -24,60 +24,28 @@ JSONBIN_ACCESS = os.environ['JSONBIN_ACCESS_KEY']
 
 JSONBIN_URL = f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}"
 
-# ── MAPEO de IDs SQL → IDs app ──
-# Ajustar según los identificadores reales en SQL.
-# Si en SQL los clientes se identifican por nombre exacto, usar {nombre_sql: id_app}
-CLIENT_MAP = {
-    "Constructora Rio Cochrane": "c01",
-    "Inmobiliaria PY":           "c02",
-    "Inmobiliaria PY":           "c03",  # Family Office - mismo cliente en SQL
-    "BBosch":                    "c04",
-    "Head":                      "c05",
-    "Volcan":                    "c06",   # Keno (parte de compartido)
-    "Codelpa":                   "c07",   # Keno (parte de compartido)
-    "FGMM":                      "c08",   # Keno (parte de compartido)
-    "Pesco":                     "c09",
-    "Stars Investment":          "c10",
-    "Republica Austral":         "c11",
-    "Creado en Chile":           "c12",
-    "Hemisur":                   "c13",
-    "BBS":                       "c14",
-    "Jedimar":                   "c15",
-    "Almaviva":                  "c16",
-    "Sevilla":                   "c17",
-    "Elecmetal":                 "c18",
-    "Viña Montes":               "c19",
-    "Amicar":                    "c20",
-    "LFE":                       "c21",
-    "Bodenor Flexcenter":        "c22",
-    "Cruceros Australis":        "c23",
-    "Lounge":                    "c25",
-    "Betterplan":                "c26",
-    "Summit Agro":               "c27",
-    "AFE":                       "c28",
-    "Agricola Bulnes":           "c29",
-    "MaxiK":                     "c30",
-    "CASBRO":                    "c31",
-    "Montgras":                  "c32",
-    "Tecnika":                   "c33",  # ⚠ No está en SQL, posible Proteknica?
-    "Saval":                     "c34",  # ⚠ No está en SQL
-    "Sigro":                     "c35",  # ⚠ No está en SQL
-    "Amesti":                    "c36",
-    "Agrosystem":                "c37",
-    "Agricola Sutil":            "c38",
-    "Kersting":                  "c39",
-    "Emin":                      "c40",
-    "Davita":                    "c41",
-    "Agricola Maria Pinto":      "c42",
-    "Santolaya":                 "c43",  # ⚠ No está en SQL
-}
+# Analistas del equipo CE&O (para filtrar horas)
+ANALYSTS_CEO = ['CJV', 'EDV', 'DFA', 'VPC', 'JDT', 'BAV']
 
-# Clientes compartidos: pares de IDs (el % se lee del JSONBin)
-SHARED_CLIENTS = {
-    "Volcan":  ["c06", "c06b"],     # Keno/Diego
-    "Codelpa": ["c07", "c07b"],     # Keno/Valen
-    "FGMM":    ["c08", "c08b"],     # Keno/Chris
-}
+
+def infer_type(tipo, modalidad):
+    """
+    Infiere el tipo de cliente basado en tipo y modalidad de SQL.
+    
+    Reglas:
+    - tipo = "mantencion" → "monthly" (Mantención)
+    - tipo = "proyecto" + modalidad contiene "paquete" → "package"
+    - todo lo demás → "other"
+    """
+    tipo_lower = (tipo or '').lower().strip()
+    modalidad_lower = (modalidad or '').lower().strip()
+    
+    if tipo_lower == 'mantencion':
+        return 'monthly'
+    elif tipo_lower == 'proyecto' and 'paquete' in modalidad_lower:
+        return 'package'
+    else:
+        return 'other'
 
 
 def get_date_range():
@@ -88,12 +56,19 @@ def get_date_range():
     return desde, hasta
 
 
-def query_sql():
-    """Consulta el total de horas por cliente en los últimos 3 meses."""
+def query_client_data():
+    """
+    Consulta SQL para obtener:
+    - Lista completa de clientes
+    - Total horas trabajadas últimos 3 meses
+    - Horas por contrato (horas_originales)
+    - Tipo y modalidad para inferir category
+    
+    Retorna: dict {cliente_nombre: {'total_horas': float, 'contract_hrs': float, 'tipo': str, 'modalidad': str}}
+    """
     desde, hasta = get_date_range()
     print(f"Consultando horas entre {desde} y {hasta}")
 
-    # Convertir fechas a formato YYYYMMDD (int)
     fecha_desde = int(desde.strftime('%Y%m%d'))
     fecha_hasta = int(hasta.strftime('%Y%m%d'))
 
@@ -110,11 +85,16 @@ def query_sql():
         query = """
             SELECT 
                 m.cliente,
-                SUM(h.horasdedicadas) as total_horas
+                SUM(h.horasdedicadas) as total_horas,
+                MAX(m.horas_originales) as horas_contrato,
+                MAX(m.tipo) as tipo,
+                MAX(m.modalidad) as modalidad
             FROM thregistrohoras h
             JOIN modelo m ON h.idmodelo = m.idmodelo
+            JOIN mas_adminfinanzas.colaborador c ON h.idcolaborador = c.idcolaborador
             WHERE h.idfecha BETWEEN %s AND %s
               AND h.escenario = 'Registro Horas'
+              AND c.abreviado IN ('CJV', 'EDV', 'DFA', 'VPC', 'JDT', 'BAV')
               AND m.estado IN ('En Ejecución', 'Cerrado')
               AND (
                   m.cliente NOT IN ('Codelpa', 'Volcan', 'FGMM', 'Elecmetal', 'Sevilla', 'Stars Investment')
@@ -128,40 +108,75 @@ def query_sql():
             GROUP BY m.cliente
         """
         cursor.execute(query, (fecha_desde, fecha_hasta))
-        result = {row[0]: float(row[1]) for row in cursor.fetchall()}
+        
+        result = {}
+        for row in cursor.fetchall():
+            cliente = row[0]
+            total_horas = float(row[1]) if row[1] else 0
+            contract_hrs = float(row[2]) if row[2] else None
+            tipo = row[3] if row[3] else ''
+            modalidad = row[4] if row[4] else ''
+            
+            result[cliente] = {
+                'total_horas': total_horas,
+                'contract_hrs': contract_hrs,
+                'tipo': tipo,
+                'modalidad': modalidad
+            }
+        
         return result
     finally:
         conn.close()
 
 
-def calculate_averages(sql_data, state):
-    """Convierte totales de 3 meses a promedios mensuales por cliente."""
-    averages = {}
+def find_or_create_client(state, cliente_nombre):
+    """
+    Busca un cliente en el state por nombre.
+    Si no existe, lo crea con autoAdded=True.
+    Retorna el objeto cliente.
+    """
+    # Normalizar nombre para búsqueda
+    nombre_norm = cliente_nombre.strip()
     
-    for cliente_nombre, total in sql_data.items():
-        promedio = round(total / 3, 1)
-        
-        # DEBUG
-        if "Codelpa" in cliente_nombre:
-            print(f"DEBUG Codelpa: total={total}, promedio={promedio}")
+    # Buscar existente
+    for client in state['clients']:
+        if client.get('name', '').strip() == nombre_norm:
+            return client
+    
+    # No existe → crear nuevo
+    # Generar ID: encontrar el máximo cXXX y sumar 1
+    max_id = 0
+    for client in state['clients']:
+        cid = client.get('id', '')
+        if cid.startswith('c'):
+            try:
+                num = int(cid[1:])
+                max_id = max(max_id, num)
+            except:
+                pass
+    
+    new_id = f"c{max_id + 1}"
+    new_client = {
+        'id': new_id,
+        'name': cliente_nombre,
+        'avgHrs': 0,
+        'autoAdded': True,
+        'addedDate': date.today().strftime('%Y-%m-%d')
+    }
+    
+    state['clients'].append(new_client)
+    print(f"✨ Cliente nuevo detectado: {cliente_nombre} → {new_id}")
+    return new_client
 
-        if cliente_nombre in SHARED_CLIENTS:
-            # Para clientes compartidos, guardar el TOTAL en ambos IDs
-            # La app se encarga de aplicar el sharePercent al mostrar
-            client_ids = SHARED_CLIENTS[cliente_nombre]
-            for client_id in client_ids:
-                averages[client_id] = promedio
-                print(f"DEBUG {cliente_nombre} → {client_id}: {promedio}h (total sin repartir)")
-        elif cliente_nombre in CLIENT_MAP:
-            averages[CLIENT_MAP[cliente_nombre]] = promedio
-        else:
-            print(f"⚠ Cliente desconocido en SQL: {cliente_nombre}")
 
-    return averages
-
-
-def update_jsonbin(averages):
-    """Lee el bin actual, actualiza promedios y guarda."""
+def update_jsonbin(sql_data):
+    """
+    Lee el bin actual, actualiza:
+    - avgHrs/monthlyHrs (promedio 3 meses)
+    - contractHrs (desde horas_originales)
+    - type (inferido desde tipo/modalidad)
+    - Crea clientes nuevos si no existen
+    """
     # Leer estado actual
     r = requests.get(
         f"{JSONBIN_URL}/latest",
@@ -175,16 +190,33 @@ def update_jsonbin(averages):
         print("⚠ El bin no tiene 'clients' — abortando")
         return
 
-    # Actualizar horas por cliente
     updated = 0
-    for client in state["clients"]:
-        if client["id"] in averages:
-            new_hrs = averages[client["id"]]
-            if client["type"] == "monthly":
-                client["monthlyHrs"] = new_hrs
-            else:
-                client["avgHrs"] = new_hrs
-            updated += 1
+    
+    for cliente_nombre, data in sql_data.items():
+        # Encontrar o crear cliente
+        client = find_or_create_client(state, cliente_nombre)
+        
+        # Calcular promedio mensual
+        promedio = round(data['total_horas'] / 3, 1)
+        
+        # Inferir tipo desde SQL
+        inferred_type = infer_type(data['tipo'], data['modalidad'])
+        
+        # Actualizar horas trabajadas
+        if inferred_type == 'monthly':
+            client['monthlyHrs'] = promedio
+        else:
+            client['avgHrs'] = promedio
+        
+        # Actualizar tipo si no existe o si viene de SQL
+        if not client.get('type') or client.get('autoAdded'):
+            client['type'] = inferred_type
+        
+        # Actualizar horas por contrato
+        if data['contract_hrs'] is not None:
+            client['contractHrs'] = data['contract_hrs']
+        
+        updated += 1
 
     print(f"Actualizando {updated} clientes en JSONBin")
 
@@ -204,21 +236,18 @@ def update_jsonbin(averages):
 
 def main():
     try:
-        # Primero leer el estado actual para obtener sharePercent
-        r = requests.get(
-            f"{JSONBIN_URL}/latest",
-            headers={"X-Access-Key": JSONBIN_ACCESS, "X-Bin-Meta": "false"},
-            timeout=15
-        )
-        r.raise_for_status()
-        state = r.json()
-        
-        sql_data = query_sql()
+        sql_data = query_client_data()
         print(f"Recibidos {len(sql_data)} clientes del SQL")
-        averages = calculate_averages(sql_data, state)
-        update_jsonbin(averages)
+        
+        # Mostrar algunos ejemplos
+        for cliente, data in list(sql_data.items())[:3]:
+            print(f"  {cliente}: {data['total_horas']}h total, contrato: {data['contract_hrs']}h")
+        
+        update_jsonbin(sql_data)
     except Exception as e:
         print(f"✗ Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

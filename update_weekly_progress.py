@@ -2,6 +2,7 @@
 """
 Actualiza el avance semanal de horas trabajadas.
 Se ejecuta todos los lunes vía GitHub Actions.
+También detecta clientes nuevos y trae sus horas por contrato.
 """
 
 import os
@@ -33,6 +34,26 @@ ANALYST_MAP = {
     'BAV': 'basti',  # Bastián Araya
     'CJV': 'chris',  # Christian Jungmann
 }
+
+
+def infer_type(tipo, modalidad):
+    """
+    Infiere el tipo de cliente basado en tipo y modalidad de SQL.
+    
+    Reglas:
+    - tipo = "mantencion" → "monthly" (Mantención)
+    - tipo = "proyecto" + modalidad contiene "paquete" → "package"
+    - todo lo demás → "other"
+    """
+    tipo_lower = (tipo or '').lower().strip()
+    modalidad_lower = (modalidad or '').lower().strip()
+    
+    if tipo_lower == 'mantencion':
+        return 'monthly'
+    elif tipo_lower == 'proyecto' and 'paquete' in modalidad_lower:
+        return 'package'
+    else:
+        return 'other'
 
 
 def get_client_map():
@@ -86,6 +107,7 @@ def query_sql_progress(client_map):
             JOIN mas_adminfinanzas.colaborador c ON h.idcolaborador = c.idcolaborador
             WHERE h.idfecha BETWEEN %s AND %s
               AND h.escenario = 'Registro Horas'
+              AND c.abreviado IN ('CJV', 'EDV', 'DFA', 'VPC', 'JDT', 'BAV')
               AND m.estado IN ('En Ejecución', 'Cerrado')
               AND (
                   m.cliente NOT IN ('Codelpa', 'Volcan', 'FGMM', 'Elecmetal', 'Sevilla', 'Stars Investment')
@@ -124,6 +146,58 @@ def query_sql_progress(client_map):
         conn.close()
 
 
+def get_contract_hours(client_names):
+    """
+    Obtiene horas por contrato, tipo y modalidad para una lista de clientes.
+    Retorna: dict {cliente_nombre: {'contract_hrs': float, 'tipo': str, 'modalidad': str}}
+    """
+    if not client_names:
+        return {}
+    
+    conn = mysql.connector.connect(
+        host=SQL_SERVER,
+        database=SQL_DATABASE,
+        user=SQL_USER,
+        password=SQL_PASSWORD,
+        ssl_disabled=False
+    )
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Usar IN para traer todos los clientes nuevos en una query
+        placeholders = ', '.join(['%s'] * len(client_names))
+        query = f"""
+            SELECT 
+                m.cliente,
+                MAX(m.horas_originales) as horas_contrato,
+                MAX(m.tipo) as tipo,
+                MAX(m.modalidad) as modalidad
+            FROM modelo m
+            WHERE m.cliente IN ({placeholders})
+              AND m.estado IN ('En Ejecución', 'Cerrado')
+            GROUP BY m.cliente
+        """
+        cursor.execute(query, tuple(client_names))
+        
+        result = {}
+        for row in cursor.fetchall():
+            cliente = row[0]
+            contract_hrs = float(row[1]) if row[1] else None
+            tipo = row[2] if row[2] else ''
+            modalidad = row[3] if row[3] else ''
+            
+            result[cliente] = {
+                'contract_hrs': contract_hrs,
+                'tipo': tipo,
+                'modalidad': modalidad
+            }
+        
+        return result
+    finally:
+        conn.close()
+
+
 def update_jsonbin_progress(progress, new_clients_from_sql):
     """Actualiza el JSONBin con el progreso semanal y nuevos clientes."""
     # Leer estado actual
@@ -153,15 +227,13 @@ def update_jsonbin_progress(progress, new_clients_from_sql):
     # Agregar nuevos clientes descubiertos
     existing_clients = {c['name']: c['id'] for c in state.get('clients', [])}
     
-    # Extraer números de IDs existentes, manejando IDs con formato incorrecto
+    # Extraer números de IDs existentes
     existing_ids = []
     for c in state.get('clients', []):
         cid = c.get('id', '')
         if cid.startswith('c'):
-            # Intentar extraer el número después de 'c'
             num_part = cid[1:]
             try:
-                # Solo tomar la parte numérica (c08b → 8, c07 → 7)
                 numeric_part = ''.join(filter(str.isdigit, num_part))
                 if numeric_part:
                     existing_ids.append(int(numeric_part))
@@ -171,18 +243,37 @@ def update_jsonbin_progress(progress, new_clients_from_sql):
     
     next_id = max(existing_ids, default=0) + 1
     
+    # Obtener horas por contrato de clientes nuevos
+    new_client_names = [name for name in new_clients_from_sql if name not in existing_clients]
+    contract_hours = get_contract_hours(new_client_names) if new_client_names else {}
+    
     new_count = 0
     for client_name in new_clients_from_sql:
         if client_name not in existing_clients:
-            new_id = f"c{next_id:02d}"
-            state['clients'].append({
+            new_id = f"c{next_id}"
+            client_data = contract_hours.get(client_name, {})
+            contract_hrs = client_data.get('contract_hrs')
+            tipo = client_data.get('tipo', '')
+            modalidad = client_data.get('modalidad', '')
+            
+            # Inferir tipo desde SQL
+            inferred_type = infer_type(tipo, modalidad)
+            
+            new_client = {
                 "id": new_id,
                 "name": client_name,
                 "avgHrs": 0,
+                "type": inferred_type,
                 "autoAdded": True,
                 "addedDate": date.today().isoformat()
-            })
-            print(f"  + Nuevo cliente agregado: {client_name} → {new_id}")
+            }
+            
+            # Agregar contractHrs si existe
+            if contract_hrs:
+                new_client["contractHrs"] = contract_hrs
+            
+            state['clients'].append(new_client)
+            print(f"  + Nuevo cliente: {client_name} → {new_id} (tipo: {inferred_type}, contrato: {contract_hrs}h)")
             next_id += 1
             new_count += 1
     
@@ -206,7 +297,7 @@ def update_jsonbin_progress(progress, new_clients_from_sql):
 
 
 def main():
-    print("=== Script version: 2026-05-18-v2 ===")
+    print("=== Script version: 2026-05-20-v3 ===")
     try:
         client_map = get_client_map()
         progress, new_clients = query_sql_progress(client_map)
@@ -214,6 +305,8 @@ def main():
         update_jsonbin_progress(progress, new_clients)
     except Exception as e:
         print(f"✗ Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
